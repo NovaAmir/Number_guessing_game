@@ -94,7 +94,8 @@ async def cancel(update : Update , context : CallbackContext) -> int:
     return ConversationHandler.END
    
 def main():
-    token ="7615886693:AAGvngpxB5RzA4d_TELk0vWvce8BC0jWx80"
+    import os
+    token = os.getenv("BOT_TOKEN")
     app = Application.builder().token(token).build()
     conv_handler = ConversationHandler(
         entry_points = [CommandHandler('start' , welcome)] , 
@@ -119,4 +120,5 @@ if __name__ == "__main__":
 
        
         
+
     
