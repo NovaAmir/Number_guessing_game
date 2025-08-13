@@ -59,6 +59,7 @@ async def start_game(update: Update, context: CallbackContext) -> int:
 
         if min_num >= max_num:
             await update.message.reply_text("Minimum must be smaller than maximum. Game starts from the beginning, be careful!")
+            await update.message.reply_text("Enter the minimum number of the range :")
             return GET_MIN
 
         true_num = random.randint(min_num, max_num)
@@ -157,5 +158,6 @@ if __name__ == "__main__":
         
 
     
+
 
 
