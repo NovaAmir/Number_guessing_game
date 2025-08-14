@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import asyncio
 import emoji
 from flask import Flask
 from telegram import Update
@@ -10,23 +11,6 @@ from telegram.ext import (
 )
 
 GET_MIN, GET_MAX, GET_GUESS, PLAY_AGAIN = range(4)
-
-# --------- Flask keep-alive server (for Render & UptimeRobot) ----------
-def make_http_app():
-    http_app = Flask(__name__)
-
-    @http_app.get("/")
-    def index():
-        return "OK", 200
-
-    return http_app
-
-def run_http_server():
-    # Render پورت را در متغیر PORT می‌دهد
-    port = int(os.getenv("PORT", "10000"))
-    http_app = make_http_app()
-    # سرور سبک برای پینگ UptimeRobot کفایت می‌کند
-    http_app.run(host="0.0.0.0", port=port)
 
 # ---------------------- Telegram Bot Handlers --------------------------
 async def welcome(update: Update, context: CallbackContext) -> int:
@@ -119,16 +103,19 @@ async def cancel(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text("Game canceled. Type /start to play again.")
     return ConversationHandler.END
 
-def main():
-    # توکن را از Environment Variable بگیر
+# ---------------------- Flask Server --------------------------
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+# ---------------------- Run Bot --------------------------
+async def run_bot():
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise RuntimeError("BOT_TOKEN env var is missing")
 
-    # سرور HTTP را در یک ترد جدا روشن کن تا Render پورت را ببیند
-    threading.Thread(target=run_http_server, daemon=True).start()
-
-    # برنامه‌ی تلگرام
     tg_app = Application.builder().token(token).build()
 
     conv_handler = ConversationHandler(
@@ -141,40 +128,15 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+
     tg_app.add_handler(conv_handler)
+    print("Bot is running...")
+    await tg_app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    print("Bot is running")
-    tg_app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-from flask import Flask
-import threading
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is running!"
-
-def run_bot():
-    main()
+def main():
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))).start()
+    asyncio.run(run_bot())
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    app.run(host="0.0.0.0", port=10000)
-
-    
-   
-
-
-
-       
-        
-
-    
-
-
-
-
-
-
+    main()
 
