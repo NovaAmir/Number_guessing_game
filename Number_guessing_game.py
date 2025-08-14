@@ -12,7 +12,7 @@ GET_MIN, GET_MAX, GET_GUESS, PLAY_AGAIN = range(4)
 
 # ---------------------- Telegram Bot Handlers --------------------------
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    print("Start command received")
+    print("Start command received")  # تست در لاگ Render
     message = emoji.emojize(
         "Hi :waving_hand:\n"
         "I'm AmirNova and I'm glad you started Number guessing game :fire:\n\n"
@@ -145,10 +145,13 @@ async def set_webhook_and_run():
     await application.bot.delete_webhook()
     await application.bot.set_webhook(url=webhook_url)
 
+    # این دو خط برای فعال کردن پردازش پیام‌ها ضروری است
+    await application.initialize()
+    await application.start()
+
 if __name__ == "__main__":
     import asyncio
     asyncio.run(set_webhook_and_run())
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
-
 
