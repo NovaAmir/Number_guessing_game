@@ -7,6 +7,8 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters,
     ConversationHandler, ContextTypes
 )
+import threading
+import asyncio
 
 GET_MIN, GET_MAX, GET_GUESS, PLAY_AGAIN = range(4)
 
@@ -145,13 +147,15 @@ async def set_webhook_and_run():
     await application.bot.delete_webhook()
     await application.bot.set_webhook(url=webhook_url)
 
-    # این دو خط برای فعال کردن پردازش پیام‌ها ضروری است
     await application.initialize()
     await application.start()
+    await asyncio.Event().wait()  # نگه داشتن بات
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(set_webhook_and_run())
+def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
+    asyncio.run(set_webhook_and_run())
 
