@@ -1,162 +1,170 @@
 import os
+import logging
 import random
-import emoji
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, MessageHandler, filters,
-    ConversationHandler, ContextTypes
-)
 import threading
 import asyncio
 
-GET_MIN, GET_MAX, GET_GUESS, PLAY_AGAIN = range(4)
+from flask import Flask, request
+from emoji import emojize
 
-# ---------------------- Telegram Bot Handlers --------------------------
-async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    print("Start command received")  # تست در لاگ Render
-    message = emoji.emojize(
-        "Hi :waving_hand:\n"
-        "I'm AmirNova and I'm glad you started Number guessing game :fire:\n\n"
-        "At first you must choose two numbers to make a range of number\n"
-        "Second , I select a number from your range\n"
-        "finally , you must guess it\n"
-        "I hope you enjoy it :smiling_face:"
+from telegram import Update
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+# -------------------- تنظیمات پایه --------------------
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    level=logging.INFO,
+)
+log = logging.getLogger("number_game")
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN env var is missing")
+
+RENDER_HOST = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if not RENDER_HOST:
+    raise RuntimeError("RENDER_EXTERNAL_HOSTNAME env var is missing")
+
+WEBHOOK_URL = f"https://{RENDER_HOST}/webhook/{BOT_TOKEN}"
+
+# -------------------- منطق بازی --------------------
+# state ها داخل user_data نگه‌داری می‌شوند
+def _reset_game(context: ContextTypes.DEFAULT_TYPE):
+    ud = context.user_data
+    ud.clear()
+    ud["stage"] = "ask_min"   # مراحل: ask_min -> ask_max -> guessing
+    ud["tries"] = 0
+
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _reset_game(context)
+    txt = emojize(
+        "سلام! :game_die:\n"
+        "بازی حدس عدد شروع شد.\n"
+        "اول حداقلِ بازه رو بفرست (مثلاً 1)."
     )
-    await update.message.reply_text(message)
-    await update.message.reply_text("Enter the minimum number of the range :")
-    return GET_MIN
+    await update.message.reply_text(txt)
+    log.info("Start command received from %s", update.effective_user.id)
 
-async def make_randint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    try:
-        min_num = int(update.message.text)
-        context.user_data['min_num'] = min_num
-        await update.message.reply_text("Now enter the maximum number of the range : ")
-        return GET_MAX
-    except ValueError:
-        await update.message.reply_text("Please enter a valid number!")
-        return GET_MIN
+async def cancel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _reset_game(context)
+    await update.message.reply_text("بازی ریست شد. /start رو بزن تا دوباره شروع کنیم.")
 
-async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    try:
-        max_num = int(update.message.text)
-        min_num = context.user_data['min_num']
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("با /start بازی رو شروع کن. اول حداقل و بعد حداکثر بازه رو بفرست، بعدش شروع کن به حدس زدن!")
 
-        if min_num >= max_num:
-            await update.message.reply_text("Minimum must be smaller than maximum. Game starts from the beginning, be careful!")
-            await update.message.reply_text("Enter the minimum number of the range :")
-            return GET_MIN
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
 
-        true_num = random.randint(min_num, max_num)
-        context.user_data.update({'True_num': true_num, 'max_num': max_num, 'count': 0})
+    text = update.message.text.strip()
+    ud = context.user_data
+    stage = ud.get("stage")
 
-        await update.message.reply_text(f"Guess a number between {min_num} and {max_num} : ")
-        return GET_GUESS
-    except ValueError:
-        await update.message.reply_text("Please enter a valid number!")
-        return GET_MAX
+    # مرحله گرفتن حداقل
+    if stage == "ask_min":
+        if not text.lstrip("-").isdigit():
+            return await update.message.reply_text("یک عدد صحیح برای حداقل بفرست 🙂")
+        ud["min"] = int(text)
+        ud["stage"] = "ask_max"
+        return await update.message.reply_text("حالا حداکثر بازه رو بفرست (مثلاً 100).")
 
-async def get_a_guess(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    try:
-        guess = int(update.message.text)
-        true_num = context.user_data['True_num']
-        min_num = context.user_data['min_num']
-        max_num = context.user_data['max_num']
-        context.user_data['count'] += 1
+    # مرحله گرفتن حداکثر
+    if stage == "ask_max":
+        if not text.lstrip("-").isdigit():
+            return await update.message.reply_text("یک عدد صحیح برای حداکثر بفرست 🙂")
+        max_v = int(text)
+        min_v = ud["min"]
+        if max_v <= min_v:
+            return await update.message.reply_text("حداکثر باید از حداقل بزرگ‌تر باشه. دوباره بفرست.")
+        ud["max"] = max_v
+        ud["secret"] = random.randint(min_v, max_v)
+        ud["stage"] = "guessing"
+        return await update.message.reply_text(
+            f"عدد مخفی انتخاب شد! بین {min_v} و {max_v} حدس بزن 👇"
+        )
 
-        if guess < min_num or guess > max_num:
-            await update.message.reply_text(f"Enter a number between {min_num} and {max_num}!")
-            return GET_GUESS
-        if true_num == guess:
-            return await finish(update, context)
-        else:
-            await update.message.reply_text(await rahnama(true_num, guess))
-            return GET_GUESS
-    except ValueError:
-        await update.message.reply_text("Please enter a valid number!")
-        return GET_GUESS
+    # مرحله حدس زدن
+    if stage == "guessing":
+        if not text.lstrip("-").isdigit():
+            return await update.message.reply_text("فقط عدد بفرست 🙂")
+        guess = int(text)
+        ud["tries"] += 1
+        secret = ud["secret"]
+        if guess < secret:
+            return await update.message.reply_text("برو بالاتر ⬆️")
+        if guess > secret:
+            return await update.message.reply_text("بیا پایین‌تر ⬇️")
+        # درست حدس زد
+        tries = ud["tries"]
+        await update.message.reply_text(
+            emojize(f"آفرین! درست حدس زدی :tada:\nتعداد تلاش‌ها: {tries}")
+        )
+        _reset_game(context)
+        return await update.message.reply_text("برای دوباره بازی کردن /start رو بزن.")
 
-async def rahnama(true_num: int, guess: int) -> str:
-    if guess > true_num:
-        return emoji.emojize("your number is bigger than correct number! choose smaller :down_arrow:")
-    else:
-        return emoji.emojize("your number is smaller than correct number! choose bigger :up_arrow:")
+    # اگر کاربر مستقیم چیزی نوشت
+    return await update.message.reply_text("برای شروع بازی /start رو بزن.")
 
-async def finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    true_num = context.user_data['True_num']
-    count = context.user_data['count']
-    await update.message.reply_text(
-        emoji.emojize(f"Excellent! The number was {true_num} . You guessed it in {count} tries.")
-    )
-    await update.message.reply_text(emoji.emojize("Do you want to Play again? :thinking_face: (Yes/No)"))
-    return PLAY_AGAIN
+# -------------------- PTB Application --------------------
+application = Application.builder().token(BOT_TOKEN).build()
+application.add_handler(CommandHandler("start", start_cmd))
+application.add_handler(CommandHandler("help", help_cmd))
+application.add_handler(CommandHandler("cancel", cancel_cmd))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-async def play_again(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    response = update.message.text.lower()
-    if response == 'yes':
-        await update.message.reply_text("Enter the minimum number : ")
-        return GET_MIN
-    else:
-        await update.message.reply_text(emoji.emojize("Thanks for playing :smiling_face:\n See you later"))
-        return ConversationHandler.END
+# -------------------- راه‌اندازی asyncio loop اختصاصی --------------------
+# روی Flask هیچ event loop فعالی نیست؛ یکی جدید می‌سازیم و همیشه روشن نگه می‌داریم.
+LOOP = asyncio.new_event_loop()
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Game canceled. Type /start to play again.")
-    return ConversationHandler.END
+def _run_loop_forever():
+    asyncio.set_event_loop(LOOP)
+    LOOP.run_forever()
 
-# ---------------------- Flask + Webhook --------------------------
-flask_app = Flask(__name__)
-application = None
+threading.Thread(target=_run_loop_forever, daemon=True).start()
 
-@flask_app.route('/')
-def home():
-    return "Bot is running with Webhook!"
-
-@flask_app.route(f"/webhook/{os.getenv('BOT_TOKEN')}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.create_task(application.process_update(update))
-    return "OK", 200
-
-async def set_webhook_and_run():
-    global application
-    token = os.getenv("BOT_TOKEN")
-    if not token:
-        raise RuntimeError("BOT_TOKEN env var is missing")
-
-    application = Application.builder().token(token).build()
-
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', welcome)],
-        states={
-            GET_MIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, make_randint)],
-            GET_MAX: [MessageHandler(filters.TEXT & ~filters.COMMAND, start_game)],
-            GET_GUESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_a_guess)],
-            PLAY_AGAIN: [MessageHandler(filters.TEXT & ~filters.COMMAND, play_again)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel)]
-    )
-
-    application.add_handler(conv_handler)
-
-    render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
-    if not render_hostname:
-        raise RuntimeError("RENDER_EXTERNAL_HOSTNAME env var is missing")
-    webhook_url = f"https://{render_hostname}/webhook/{token}"
-
-    await application.bot.delete_webhook()
-    await application.bot.set_webhook(url=webhook_url)
-
+async def _ptb_init_and_webhook():
+    # init/start لازم است تا application بتواند process_update را انجام بدهد
     await application.initialize()
     await application.start()
-    await asyncio.Event().wait()  # نگه داشتن بات
+    await application.bot.set_webhook(
+        url=WEBHOOK_URL,
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES,
+    )
+    log.info("Webhook set to %s", WEBHOOK_URL)
 
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
+# این کار را روی loop پس‌زمینه زمان‌بندی می‌کنیم
+asyncio.run_coroutine_threadsafe(_ptb_init_and_webhook(), LOOP)
+
+# -------------------- Flask app --------------------
+flask_app = Flask(__name__)
+
+@flask_app.get("/")
+@flask_app.head("/")
+def health():
+    # برای health check های Render
+    return "OK", 200
+
+@flask_app.post(f"/webhook/{BOT_TOKEN}")
+def telegram_webhook():
+    try:
+        data = request.get_json(force=True)
+        update = Update.de_json(data, application.bot)
+        # پردازش آپدیت روی همان loop پس‌زمینه
+        asyncio.run_coroutine_threadsafe(application.process_update(update), LOOP)
+        return "OK", 200
+    except Exception as e:
+        log.exception("webhook handler error: %s", e)
+        return "ERROR", 500
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
-    asyncio.run(set_webhook_and_run())
-
+    port = int(os.getenv("PORT", "10000"))
+    log.info("Starting Flask on 0.0.0.0:%s", port)
+    flask_app.run(host="0.0.0.0", port=port, debug=False)
 
