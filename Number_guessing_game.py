@@ -115,7 +115,7 @@ def home():
 @flask_app.route(f"/webhook/{os.getenv('BOT_TOKEN')}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
+    application.create_task(application.process_update(update))
     return "OK", 200
 
 async def set_webhook_and_run():
@@ -158,4 +158,5 @@ def run_flask():
 if __name__ == "__main__":
     threading.Thread(target=run_flask).start()
     asyncio.run(set_webhook_and_run())
+
 
