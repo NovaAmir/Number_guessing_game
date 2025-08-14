@@ -1,4 +1,6 @@
 python-telegram-bot==22.3
 emoji
 Flask
+gunicorn
+
 
