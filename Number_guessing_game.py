@@ -1,9 +1,7 @@
 import os
 import random
-import threading
-import asyncio
 import emoji
-from flask import Flask
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
     CommandHandler, MessageHandler, filters,
@@ -103,20 +101,27 @@ async def cancel(update: Update, context: CallbackContext) -> int:
     await update.message.reply_text("Game canceled. Type /start to play again.")
     return ConversationHandler.END
 
-# ---------------------- Flask Server --------------------------
-app = Flask(__name__)
+# ---------------------- Flask + Webhook --------------------------
+flask_app = Flask(__name__)
+application = None  # will hold our telegram bot application
 
-@app.route('/')
+@flask_app.route('/')
 def home():
-    return "Bot is running!"
+    return "Bot is running with Webhook!"
 
-# ---------------------- Run Bot --------------------------
-async def run_bot():
+@flask_app.route(f"/webhook/{os.getenv('BOT_TOKEN')}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.update_queue.put_nowait(update)
+    return "OK", 200
+
+def main():
+    global application
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise RuntimeError("BOT_TOKEN env var is missing")
 
-    tg_app = Application.builder().token(token).build()
+    application = Application.builder().token(token).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', welcome)],
@@ -129,13 +134,15 @@ async def run_bot():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    tg_app.add_handler(conv_handler)
-    print("Bot is running...")
-    await tg_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.add_handler(conv_handler)
 
-def main():
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")))).start()
-    asyncio.run(run_bot())
+    # Set webhook
+    render_url = os.getenv("RENDER_EXTERNAL_URL") or f"https://{os.getenv('RENDER_URL')}"
+    webhook_url = f"{render_url}/webhook/{token}"
+    application.bot.set_webhook(url=webhook_url)
+
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     main()
