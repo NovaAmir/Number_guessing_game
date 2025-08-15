@@ -46,7 +46,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     txt = emojize(
         "Hello! :game_die:\n"
         "Number guessing game started.\n"
-        "First, send the minimum value (e.g., 1)."
+        "First, send the minimum value : "
     )
     await update.message.reply_text(txt)
     log.info("Start command received from %s", update.effective_user.id)
@@ -74,7 +74,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return await update.message.reply_text("Please send an integer for the minimum 🙂")
         ud["min"] = int(text)
         ud["stage"] = "ask_max"
-        return await update.message.reply_text("Now send the maximum value (e.g., 100).")
+        return await update.message.reply_text("Now send the maximum value : ")
 
     # Get maximum value
     if stage == "ask_max":
@@ -105,7 +105,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Correct guess
         tries = ud["tries"]
         await update.message.reply_text(
-            emojize(f"Congratulations! You guessed it right :tada:\nTries: {tries}")
+            emojize(f"Congratulations! You guessed it right .\n You could guess it in {tries} tries")
         )
         _reset_game(context)
         return await update.message.reply_text("Send /start to play again.")
@@ -169,5 +169,6 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     log.info("Starting Flask on 0.0.0.0:%s", port)
     flask_app.run(host="0.0.0.0", port=port, debug=False)
+
 
 
