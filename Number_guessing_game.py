@@ -44,7 +44,7 @@ def _reset_game(context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _reset_game(context)
     txt = emojize(
-        "Hello! :waving hand:\n"
+        "Hello! :waving_hand:\n"
         "You started Number guessing game .\n"
         "At First, send the minimum value : "
     )
@@ -169,6 +169,7 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     log.info("Starting Flask on 0.0.0.0:%s", port)
     flask_app.run(host="0.0.0.0", port=port, debug=False)
+
 
 
 
