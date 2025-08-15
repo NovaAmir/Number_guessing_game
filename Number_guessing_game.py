@@ -1,11 +1,13 @@
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import random
 import logging
+import threading
 
-# Enable logging
+# Logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -26,13 +28,13 @@ application = Application.builder().token(TOKEN).build()
 # Handlers
 # ----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Welcome to the Number Guessing Game! Guess a number between 1 and 10.")
+    await update.message.reply_text("Welcome! Guess a number between 1 and 10.")
     user_data[update.effective_user.id] = random.randint(1, 10)
 
 async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in user_data:
-        await update.message.reply_text("Please start the game using /start.")
+        await update.message.reply_text("Use /start to start the game.")
         return
     try:
         guessed_number = int(update.message.text)
@@ -41,10 +43,10 @@ async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target = user_data[user_id]
     if guessed_number == target:
-        await update.message.reply_text("🎉 Correct! You win!")
+        await update.message.reply_text("🎉 Correct!")
         del user_data[user_id]
     else:
-        await update.message.reply_text("❌ Wrong guess! Try again.")
+        await update.message.reply_text("❌ Wrong! Try again.")
 
 application.add_handler(CommandHandler("start", start))
 application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guess))
@@ -55,8 +57,14 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guess))
 @app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)  # ✅ safer for Flask webhook
+    application.update_queue.put_nowait(update)
     return "ok", 200
+
+# ----------------------------
+# Start telegram bot in background
+# ----------------------------
+def run_telegram():
+    asyncio.run(application.start())  # start the bot to process updates
 
 # ----------------------------
 # Main
@@ -64,18 +72,13 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
-    if not render_hostname:
-        raise RuntimeError("RENDER_EXTERNAL_HOSTNAME environment variable is missing")
     webhook_url = f"https://{render_hostname}/webhook/{TOKEN}"
 
-    # Set webhook URL
-    import asyncio
     asyncio.get_event_loop().run_until_complete(application.bot.set_webhook(url=webhook_url))
     print(f"Webhook set to: {webhook_url}")
 
-    # Initialize Telegram application
-    asyncio.get_event_loop().run_until_complete(application.initialize())
+    # Start telegram bot in background thread
+    threading.Thread(target=run_telegram, daemon=True).start()
 
     # Run Flask app
     app.run(host="0.0.0.0", port=port)
-
