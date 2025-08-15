@@ -56,9 +56,8 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guess))
 @app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.process_update(update)  # changed from update_queue.put_nowait()
+    asyncio.create_task(application.process_update(update))
     return "ok", 200
-
 # ----------------------------
 # Main
 # ----------------------------
@@ -78,4 +77,5 @@ if __name__ == "__main__":
 
     # Run Flask app
     app.run(host="0.0.0.0", port=port)
+
 
