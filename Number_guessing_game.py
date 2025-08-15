@@ -1,5 +1,4 @@
 import os
-import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -56,7 +55,7 @@ application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guess))
 @app.route(f"/webhook/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    asyncio.run(application.process_update(update))  # fixed: ensures async runs in sync Flask
+    application.update_queue.put_nowait(update)  # ✅ safer for Flask webhook
     return "ok", 200
 
 # ----------------------------
@@ -70,6 +69,7 @@ if __name__ == "__main__":
     webhook_url = f"https://{render_hostname}/webhook/{TOKEN}"
 
     # Set webhook URL
+    import asyncio
     asyncio.get_event_loop().run_until_complete(application.bot.set_webhook(url=webhook_url))
     print(f"Webhook set to: {webhook_url}")
 
@@ -78,3 +78,4 @@ if __name__ == "__main__":
 
     # Run Flask app
     app.run(host="0.0.0.0", port=port)
+
