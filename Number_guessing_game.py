@@ -146,8 +146,10 @@ asyncio.run_coroutine_threadsafe(_ptb_init_and_webhook(), LOOP)
 # -------------------- Flask App --------------------
 flask_app = Flask(__name__)
 
-@flask_app.get("/")
-@flask_app.head("/")
+@flask_app.route("/", methods=["GET", "HEAD"])
+def health():
+    return "Bot is running", 200
+
 def health():
     return "Bot is running", 200
 
@@ -167,4 +169,5 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     log.info("Starting Flask on 0.0.0.0:%s", port)
     flask_app.run(host="0.0.0.0", port=port, debug=False)
+
 
