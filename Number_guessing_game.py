@@ -44,9 +44,9 @@ def _reset_game(context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _reset_game(context)
     txt = emojize(
-        "Hello! :game_die:\n"
-        "Number guessing game started.\n"
-        "First, send the minimum value : "
+        "Hello! :wave:\n"
+        "You started Number guessing game .\n"
+        "At First, send the minimum value : "
     )
     await update.message.reply_text(txt)
     log.info("Start command received from %s", update.effective_user.id)
@@ -83,7 +83,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         max_v = int(text)
         min_v = ud["min"]
         if max_v <= min_v:
-            return await update.message.reply_text("Maximum must be greater than minimum. Try again.")
+            return await update.message.reply_text("Be careful maximum must be greater than minimum. Try again.")
         ud["max"] = max_v
         ud["secret"] = random.randint(min_v, max_v)
         ud["stage"] = "guessing"
@@ -169,6 +169,7 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", "10000"))
     log.info("Starting Flask on 0.0.0.0:%s", port)
     flask_app.run(host="0.0.0.0", port=port, debug=False)
+
 
 
 
